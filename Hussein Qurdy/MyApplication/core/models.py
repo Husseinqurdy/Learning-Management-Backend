@@ -4,6 +4,7 @@ from django.core.validators import RegexValidator
 from core.managers import CustomUserManager
 from django.conf import settings
 
+
 class User(AbstractUser, PermissionsMixin):
     groups = None
     user_permissions = None
@@ -64,7 +65,7 @@ class CourseCategory(models.Model):
     name = models.CharField(max_length=100, unique=True)
     description = models.TextField(blank=True)
     created_by = models.ForeignKey(User, on_delete=models.CASCADE, related_name="categories")
-
+    institution = models.ForeignKey("lms_project.Institution", on_delete=models.CASCADE, related_name="categories")
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -113,6 +114,7 @@ class Enrollment(models.Model):
     student = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
     course = models.ForeignKey(Course, on_delete=models.CASCADE, related_name="enrollments")
     enrolled_at = models.DateTimeField(auto_now_add=True)
+    progress = models.PositiveIntegerField(default=0)  # 0–100%
 
     class Meta:
         unique_together = ("student", "course")

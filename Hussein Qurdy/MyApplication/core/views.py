@@ -2,7 +2,7 @@ from itertools import count
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status, permissions, generics
-from core.serializers import CategoryDropdownSerializer, CreateUserSerializer, CourseCategorySerializer,CourseCreateSerializer, EnrollmentSerializer
+from core.serializers import CategoryDropdownSerializer, CourseDetailSerializer, CreateUserSerializer, CourseCategorySerializer,CourseCreateSerializer, EnrollmentSerializer, StudentCourseSerializer, StudentMyCourseSerializer
 from core.models import Enrollment, User, CourseCategory, Course
 import csv
 from rest_framework.decorators import api_view, permission_classes
@@ -174,37 +174,10 @@ def get_user_info(request):
 
 
 
+
 class IsClient(permissions.BasePermission):
     def has_permission(self, request, view):
         return request.user.is_authenticated and request.user.role == "client"
-
-
-class CourseCategoryListCreateView(generics.ListCreateAPIView):
-    serializer_class = CourseCategorySerializer
-    permission_classes = [permissions.IsAuthenticated, IsClient]
-
-    def get_queryset(self):
-        return CourseCategory.objects.filter(created_by=self.request.user)
-
-    def perform_create(self, serializer):
-        serializer.save(created_by=self.request.user)
-
-
-class CourseCategoryUpdateView(generics.UpdateAPIView):
-    queryset = CourseCategory.objects.all()
-    serializer_class = CourseCategorySerializer
-    permission_classes = [permissions.IsAuthenticated, IsClient]
-
-    def get_queryset(self):
-        return CourseCategory.objects.filter(created_by=self.request.user)
-
-
-class CourseCategoryDeleteView(generics.DestroyAPIView):
-    queryset = CourseCategory.objects.all()
-    permission_classes = [permissions.IsAuthenticated, IsClient]
-
-    def get_queryset(self):
-        return CourseCategory.objects.filter(created_by=self.request.user)
 
 
 class IsInstructor(permissions.BasePermission):
@@ -212,13 +185,42 @@ class IsInstructor(permissions.BasePermission):
         return request.user.is_authenticated and request.user.role == "instructor"
 
 
+class CourseCategoryListCreateView(generics.ListCreateAPIView):
+    serializer_class = CourseCategorySerializer
+    permission_classes = [permissions.IsAuthenticated, IsClient]
+
+    def get_queryset(self):
+        # Client anaona categories zote za institution yake
+        return CourseCategory.objects.filter(institution=self.request.tenant)
+
+    def perform_create(self, serializer):
+        serializer.save(created_by=self.request.user, institution=self.request.tenant)
+
+
+class CourseCategoryUpdateView(generics.UpdateAPIView):
+    serializer_class = CourseCategorySerializer
+    permission_classes = [permissions.IsAuthenticated, IsClient]
+
+    def get_queryset(self):
+        return CourseCategory.objects.filter(institution=self.request.tenant)
+
+
+class CourseCategoryDeleteView(generics.DestroyAPIView):
+    permission_classes = [permissions.IsAuthenticated, IsClient]
+
+    def get_queryset(self):
+        return CourseCategory.objects.filter(institution=self.request.tenant)
+
+
+# ✅ Instructor: anaweza kusoma categories zote za institution yake
 class CourseCategoryListForInstructorView(generics.ListAPIView):
     serializer_class = CourseCategorySerializer
     permission_classes = [permissions.IsAuthenticated, IsInstructor]
 
     def get_queryset(self):
-        # Multi-tenant schema switching already isolates data
-        return CourseCategory.objects.all()
+        return CourseCategory.objects.filter(institution=self.request.tenant)
+
+
 
 
 class InstructorCourseCreateView(generics.CreateAPIView):
@@ -386,3 +388,85 @@ class ClientCategoryDropdownView(generics.ListAPIView):
 
     def get_queryset(self):
         return CourseCategory.objects.filter(created_by=self.request.user).order_by("name")
+    
+
+class StudentCourseCatalogView(generics.ListAPIView):
+    serializer_class = StudentCourseSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        queryset = (
+            Course.objects.filter(visibility="public", status="active")
+            .select_related("category", "created_by")
+            .prefetch_related("modules")
+            .annotate(enrolled_students=Count("enrollments"))
+            .order_by("-created_at")
+        )
+
+        search = self.request.query_params.get("search")
+        category = self.request.query_params.get("category")
+
+        if search:
+            queryset = queryset.filter(title__icontains=search)
+        if category:
+            queryset = queryset.filter(category__id=category)
+
+        return queryset
+
+
+class StudentEnrollView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, course_id):
+        try:
+            course = Course.objects.get(id=course_id, visibility="public", status="active")
+            Enrollment.objects.get_or_create(student=request.user, course=course)
+            return Response({"detail": "Enrolled successfully"}, status=201)
+        except Course.DoesNotExist:
+            return Response({"detail": "Course not found or not available"}, status=404)
+
+class StudentCategoryDropdownView(generics.ListAPIView):
+    serializer_class = CategoryDropdownSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        return CourseCategory.objects.filter(institution=self.request.tenant).order_by("name")
+
+
+class StudentMyCoursesView(generics.ListAPIView):
+    serializer_class = StudentMyCourseSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        return Course.objects.filter(enrollments__student=self.request.user)
+
+
+
+
+class StudentCourseDetailView(generics.RetrieveAPIView):
+    serializer_class = CourseDetailSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        # Only courses the student is enrolled in
+        return Course.objects.filter(enrollments__student=self.request.user)
+
+
+class UpdateProgressView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request, course_id, module_id):
+        enrollment = Enrollment.objects.filter(student=request.user, course_id=course_id).first()
+        if not enrollment:
+            return Response({"detail": "Not enrolled"}, status=400)
+
+        # Example: increment progress by marking module complete
+        course = Course.objects.get(id=course_id)
+        total_modules = course.modules.count()
+        completed_modules = request.data.get("completed_modules", 0)
+
+        if total_modules > 0:
+            enrollment.progress = int((completed_modules / total_modules) * 100)
+            enrollment.save()
+
+        return Response({"progress": enrollment.progress}, status=200)

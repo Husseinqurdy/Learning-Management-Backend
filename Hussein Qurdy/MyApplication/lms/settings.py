@@ -4,6 +4,7 @@ from datetime import timedelta
 import os
 from dotenv import load_dotenv
 
+
 load_dotenv()
 
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -137,6 +138,8 @@ MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
 
 # 🌍 CORS
 CORS_ALLOW_ALL_ORIGINS = True
+
+
 
 # 🧠 Default Primary Key
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'

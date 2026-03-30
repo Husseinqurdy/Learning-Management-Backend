@@ -187,3 +187,58 @@ class CategoryDropdownSerializer(serializers.ModelSerializer):
     class Meta:
         model = CourseCategory
         fields = ["id", "name"]
+        
+        
+class StudentCourseSerializer(serializers.ModelSerializer):
+    category = CourseCategorySerializer()
+    instructor = serializers.SerializerMethodField()
+    enrolled_students = serializers.IntegerField(read_only=True)
+
+    class Meta:
+        model = Course
+        fields = [
+            "id", "title", "description", "category",
+            "visibility", "status", "enrolled_students",
+            "instructor"
+        ]
+
+    def get_instructor(self, obj):
+        return {
+            "id": obj.created_by.id,
+            "name": f"{obj.created_by.firstname} {obj.created_by.surname}"
+        }
+
+
+class StudentMyCourseSerializer(serializers.ModelSerializer):
+    progress = serializers.IntegerField(source="enrollments__progress", read_only=True)
+    status = serializers.SerializerMethodField()
+    instructor = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Course
+        fields = ["id", "title", "description", "progress", "status", "instructor"]
+
+    def get_status(self, obj):
+        progress = getattr(obj, "enrollments__progress", 0)
+        if progress == 0:
+            return "Not Started"
+        elif progress < 100:
+            return "In Progress"
+        return "Completed"
+
+    def get_instructor(self, obj):
+        return f"{obj.created_by.firstname} {obj.created_by.surname}"
+
+
+
+class CourseDetailSerializer(serializers.ModelSerializer):
+    modules = ModuleSerializer(many=True, read_only=True)
+    progress = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Course
+        fields = ["id", "title", "description", "modules", "progress"]
+
+    def get_progress(self, obj):
+        enrollment = obj.enrollments.filter(student=self.context["request"].user).first()
+        return enrollment.progress if enrollment else 0
