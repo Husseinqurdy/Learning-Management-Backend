@@ -3,15 +3,16 @@ from pathlib import Path
 from datetime import timedelta
 import os
 from dotenv import load_dotenv
-
+import dj_database_url
+import cloudinary
 
 load_dotenv()
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-SECRET_KEY = 'django-insecure-jaoz$=owh#^$9k$@l0r*e14pm!#&43yul$#%titfs)g03#orha'
+
 DEBUG = True
-ALLOWED_HOSTS = []
+ALLOWED_HOSTS = ["*"]
 
 # 🔐 Tenant Configuration
 TENANT_MODEL = "lms_project.Institution"
@@ -41,6 +42,8 @@ TENANT_APPS = [
 
 INSTALLED_APPS = SHARED_APPS + [app for app in TENANT_APPS if app not in SHARED_APPS] + [
     'corsheaders',
+    'cloudinary_storage',
+    'cloudinary',
     'rest_framework',
 ]
 
@@ -105,19 +108,14 @@ TEMPLATES = [
 ]
 
 # 🗄️ Database
+DATABASE_URL = os.getenv("DATABASE_URL")
+
 DATABASES = {
-    'default': {
-        'ENGINE': 'django_tenants.postgresql_backend',
-        'NAME': 'lms_db',
-        'USER': 'postgres',
-        'PASSWORD': 'Hussein0910@',
-        'HOST': 'localhost',
-        'PORT': '5432',
-        'OPTIONS': {
-            'options': '-c search_path=public'
-        }
-    }
+    'default': dj_database_url.config(default=DATABASE_URL, conn_max_age=600)
 }
+
+# 🔥 FORCE django-tenants backend
+DATABASES['default']['ENGINE'] = 'django_tenants.postgresql_backend'
 
 DATABASE_ROUTERS = (
     'django_tenants.routers.TenantSyncRouter',
@@ -131,13 +129,46 @@ AUTH_PASSWORD_VALIDATORS = [
     {'NAME': 'django.contrib.auth.password_validation.NumericPasswordValidator'},
 ]
 
-# 📦 Static & Media
-STATIC_URL = 'static/'
-MEDIA_URL = '/media/'
-MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
+# STATIC FILES
+STATIC_URL = '/static/'
+STATIC_ROOT = BASE_DIR / 'staticfiles'
+STATICFILES_STORAGE = "whitenoise.storage.CompressedManifestStaticFilesStorage"
+# ⚠️ Usitumie STATICFILES_DIRS kwenye Render isipokuwa una extra static folder
+# STATICFILES_DIRS = [BASE_DIR / 'static']
 
-# 🌍 CORS
-CORS_ALLOW_ALL_ORIGINS = True
+# MEDIA FILES (Cloudinary)
+MEDIA_URL = '/media/'
+CLOUDINARY_STORAGE = {
+    'CLOUD_NAME': os.getenv('CLOUDINARY_CLOUD_NAME'),
+    'API_KEY': os.getenv('CLOUDINARY_API_KEY'),
+    'API_SECRET': os.getenv('CLOUDINARY_API_SECRET'),
+}
+DEFAULT_FILE_STORAGE = 'cloudinary_storage.storage.MediaCloudinaryStorage'
+
+# CLOUDINARY CONFIG
+cloudinary.config(
+    cloud_name=os.getenv('CLOUDINARY_CLOUD_NAME'),
+    api_key=os.getenv('CLOUDINARY_API_KEY'),
+    api_secret=os.getenv('CLOUDINARY_API_SECRET'),
+)
+
+print(os.getenv('CLOUDINARY_CLOUD_NAME'))
+
+CORS_ALLOWED_ORIGINS = [
+    "http://localhost:5173",
+    "https://umemeswahili.co.tz",
+]
+CORS_ALLOW_HEADERS = [
+    "accept",
+    "authorization",
+    "content-type",
+    "origin",
+    "user-agent",
+    "x-csrftoken",
+    "x-requested-with",
+]
+
+
 
 
 
